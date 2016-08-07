@@ -9,6 +9,7 @@ __pycache__/
 extra/
 test.py
 zakupki_logs/
+temp/
 
 # C extensions
 *.so
