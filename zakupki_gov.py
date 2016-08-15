@@ -4,7 +4,9 @@
 import logging
 import os
 import re
+from bs4 import BeautifulSoup
 
+import simplejson
 from grab import Grab
 
 __author__ = "wiom"
@@ -17,9 +19,17 @@ class ZakupkiGov(Grab):
     total_count = 0
     count = 0
 
+    xpath = {
+        'items': './/*/body/div/div[1]/div[3]/div/div/table',
+        'status': 'table/tbody/tr/td[@class="tenderTd"]/dl/dt/strong',
+        'reg_nomber': 'table/tbody/tr/td[@class="descriptTenderTd"]/dl/dt/a',
+        'organization': 'table/tbody/tr/td[@class="descriptTenderTd"]/dl/dd[@class="nameOrganization"]/a',
+        'amount': 'table/tbody/tr/td[@class="amountTenderTd"]/ul/li',
+    }
+
     regexp = {
         'total_count': r'Всего записей\:\s*\<strong\>(\d+)\<\/strong\>',
-        'details': r'\<li\>\s*?\<a\s*?[target\=\"\_blank\"]*?\s*?href\=\"(.*?)\"\s*?[target\=\"\_blank\"]*?\>\s*?Сведения\s*?\<\/a\>\s*\<\/li\>'
+        'details': r'\<li\>\s*?\<a\s*?[target\=\"\_blank\"]*?\s*?href\=\"(.*?)\"\s*?[target\=\"\_blank\"]*?\>\s*?Сведения\s*?\<\/a\>\s*\<\/li\>',
     }
 
     _html = ''
@@ -42,12 +52,22 @@ class ZakupkiGov(Grab):
 
     def __next__(self):
         while True:
-            result = set(re.findall(pattern=self.regexp['details'], string=self._html))
+            # <div class="registerBox registerBoxBank margBtm20">
+            soup = BeautifulSoup(self._html, 'html.parser')
+            items = soup.find_all('div', {'class': ['registerBox', 'registerBoxBank', 'margBtm20']})
+
             if self.count >= self.total_count:
                 raise StopIteration
-            for r in result:
+
+            for item in items:
                 self.count += 1
-                yield r
+                _item = {}
+
+                _item['status'] = item.findNext('td', {'class': ['tenderTd']}).dl.dt.strong.text.strip()
+                _item['reg_nomber'] = item.findNext('td', {'class': ['descriptTenderTd']}).dl.dt.a.text.strip()
+                _item['amount'] = [x.text for x in item.findNext('td', {'class': 'amountTenderTd'}).ul.findAll('li')]
+
+                yield simplejson.dumps(_item, ensure_ascii=False)
             else:
                 self._last_query_string['page'] += 1
                 self._html = self.site_search(**self._last_query_string)
@@ -75,9 +95,6 @@ class ZakupkiGov(Grab):
 
         self._html = self.site_request(url=url)
         return self._html
-
-# Переход по этим ссылкам
-# Парсинг сведений о закупках
 
 zakupli = ZakupkiGov()
 
